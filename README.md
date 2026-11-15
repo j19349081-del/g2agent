@@ -1,8 +1,30 @@
 # G2Agent
 
-## API setup
+## Script usage
 
-1. **NotebookLM:** The consumer product has no documented API/token flow for generating and downloading Video Overviews. Google’s [NotebookLM Enterprise docs](https://docs.cloud.google.com/gemini/enterprise/notebooklm-enterprise/docs/overview) document product access, but not the complete video-generation API workflow. No supported NotebookLM API credential can currently be created for this use; don't use private endpoints or session cookies.
-2. **Open YouTube setup pages:** Run `./scripts/Start-G2YouTubeSetup.ps1 -ProjectId <your-google-cloud-project-id>`. It opens the YouTube Data API Library, OAuth setup, OAuth clients, and official guide pages for that project.
-3. **Create credentials in the browser:** Enable **YouTube Data API v3**; configure OAuth branding and audience (add your account as a test user if required); create a **Desktop app** OAuth client; and download its JSON outside this repo. In Data Access, add `https://www.googleapis.com/auth/youtube`. Type `READY` in the script and enter the JSON file path; it runs the Google consent flow. You must complete Google's Cloud Console and consent screens yourself; the script opens the correct pages but cannot create credentials or grant consent on your behalf. An API key cannot upload videos.
-4. **Select channel and upload:** Run `./scripts/Get-G2Channel.ps1`, set the verified `expectedChannelId` in local `settings.json`, then create and review a job before uploading. OAuth credentials stay in local ADC; uploads default to private and public release requires approval. See [YouTube OAuth](https://developers.google.com/youtube/v3/guides/authentication), [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), and [video upload API](https://developers.google.com/youtube/v3/docs/videos/insert).
+Run these commands from the `g2agent` folder in PowerShell:
+
+```powershell
+./scripts/Initialize-G2Agent.ps1
+./scripts/Test-G2Prerequisites.ps1
+./scripts/Start-G2YouTubeSetup.ps1 -ProjectId "<google-cloud-project-id>"
+```
+
+The setup script opens the required Google API/OAuth pages, then runs the consent flow. Follow its prompts and provide the path to the downloaded Desktop OAuth client JSON.
+
+```powershell
+./scripts/Get-G2Channel.ps1
+```
+
+Set the verified channel ID in local `settings.json`, then create a video job:
+
+```powershell
+./scripts/New-G2Job.ps1 -MediaPath "<video-file>" -Title "<title>" -Type Video
+./scripts/Test-G2Job.ps1 -JobPath "<jobs\job-id.json>" -ForUpload
+./scripts/Upload-G2Video.ps1 -JobPath "<jobs\job-id.json>" -Confirm
+./scripts/Get-G2VideoStatus.ps1 -JobPath "<jobs\job-id.json>"
+```
+
+```powershell
+./scripts/Set-G2VideoVisibility.ps1 -JobPath "<jobs\job-id.json>" -Visibility public -ApprovePublic -Confirm
+```
