@@ -1,0 +1,12 @@
+# User media, private metadata, and local account configuration
+/inbox/*
+/jobs/*
+/logs/*
+/settings.json
+
+# OAuth credentials, resumable-session URLs, and local secrets
+*token*
+*credential*
+*secret*
+*.pfx
+*.pem
