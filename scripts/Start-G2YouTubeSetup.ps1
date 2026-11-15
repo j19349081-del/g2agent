@@ -1,10 +1,17 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9-]{4,28}[a-z0-9]$')][string]$ProjectId,
-    [Parameter()][switch]$SkipAuthorization
+    [Parameter(Mandatory)][string]$ClientIdFile,
+    [Parameter(Mandatory)][ValidatePattern('^UC[a-zA-Z0-9_-]{22}$')][string]$ExpectedChannelId
 )
 
 $ErrorActionPreference = 'Stop'
+$resolvedClientIdFile = (Resolve-Path -LiteralPath $ClientIdFile -ErrorAction Stop).Path
+$oauthClient = Get-Content -LiteralPath $resolvedClientIdFile -Raw | ConvertFrom-Json
+if (-not $oauthClient.installed) {
+    throw 'The client JSON is not a Google OAuth Desktop app client. Download the Desktop app client JSON and retry.'
+}
+
 $setupPages = @(
     [pscustomobject]@{
         Name = 'Enable YouTube Data API v3'
@@ -32,23 +39,26 @@ foreach ($page in $setupPages) {
     }
 }
 
-if ($SkipAuthorization) {
-    Write-Output 'Browser setup pages opened. Complete the Cloud Console steps, then rerun without -SkipAuthorization to authorize.'
-    return
+$settingsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'settings.json'
+$initializeScript = Join-Path $PSScriptRoot 'Initialize-G2Agent.ps1'
+if (-not (Test-Path -LiteralPath $settingsPath)) {
+    & $initializeScript -Confirm:$false
 }
 
-Write-Output 'In the browser: enable YouTube Data API v3; configure OAuth branding/audience and add your account as a test user if needed; create a Desktop app OAuth client; download its JSON outside this repository; and add the youtube scope in Data Access.'
-$ready = Read-Host 'When those steps are complete, type READY to continue to Google authorization'
-if ($ready -cne 'READY') {
-    Write-Output 'Stopped without authorizing. Rerun this script when the Cloud Console setup is complete.'
-    return
-}
-
-$clientIdFile = Read-Host 'Enter the full path to the downloaded OAuth Desktop client JSON (not its contents)'
-if ([string]::IsNullOrWhiteSpace($clientIdFile)) { throw 'OAuth client JSON path is required.' }
 $connectScript = Join-Path $PSScriptRoot 'Connect-G2YouTube.ps1'
-if ($PSCmdlet.ShouldProcess('Google account', 'Run the existing YouTube OAuth consent flow')) {
-    & $connectScript -ClientIdFile $clientIdFile -Confirm
+if ($PSCmdlet.ShouldProcess('Google account', 'Run the YouTube OAuth consent flow in the browser')) {
+    & $connectScript -ClientIdFile $resolvedClientIdFile -Confirm:$false
 }
 
-Write-Output 'Authorization flow finished. Next run Get-G2Channel.ps1, verify the intended channel, and set expectedChannelId in settings.json.'
+Import-Module (Join-Path $PSScriptRoot 'G2Agent.Common.psm1') -Force
+$channelsUri = 'https://www.googleapis.com/youtube/v3/channels?part=id%2Csnippet&mine=true'
+$channels = Invoke-G2YouTubeApi -Method GET -Uri $channelsUri
+$channel = @($channels.items | Where-Object { $_.id -eq $ExpectedChannelId } | Select-Object -First 1)
+if ($channel.Count -eq 0) {
+    throw "OAuth completed, but the authorized account does not expose expected channel '$ExpectedChannelId'. No channel setting was changed."
+}
+
+$settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+$settings.expectedChannelId = $ExpectedChannelId
+$settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+Write-Output "Setup complete. Authorized channel: $($channel[0].snippet.title) ($ExpectedChannelId). Subsequent G2Agent operations run without terminal prompts."
